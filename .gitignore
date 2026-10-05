@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
+*.pyo
+
+# Editor / IDE
+.idea/
+.vscode/
+
+# Logs and stdout dumps (also matches a `logs` symlink)
+**/logs/
+/logs
+*.out
+
+# Auto-generated code (e.g., l4casadi)
+**_generated/
+
+# Figures
+fig/
+
+# Simulator artifacts
+**/MUJOCO_LOG.TXT
+**/panda_tmp_rb*.xml
+
+# Image-editing experiment outputs
+output/
+summary/
+comparison/
+result/
+sample/
+
+# Pretrained checkpoints (placed locally, not committed)
+*.pth
+
+# Per-task data/working folders that may exist across branches
+d3il/
+datasets/
+dataset/
+experiment/
+
+# OS
+.DS_Store

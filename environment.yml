@@ -1,0 +1,11 @@
+name: aegisflow_image
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    # PyTorch (CUDA 12.1+; adjust per your hardware):
+    # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+    - -r requirements.txt
