@@ -1,11 +1,30 @@
-name: aegisflow_image
+name: aegisflow_planning
 channels:
-  - conda-forge
   - defaults
+  - conda-forge
 dependencies:
   - python=3.10
   - pip
+  - patchelf
+  - ffmpeg
   - pip:
-    # PyTorch (CUDA 12.1+; adjust per your hardware):
-    # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-    - -r requirements.txt
+      - numpy
+      - matplotlib==3.3.4
+      - typed-argument-parser
+      - git+https://github.com/Farama-Foundation/d4rl@f2a05c0d66722499bf8031b094d9af3aea7c372b#egg=d4rl
+      - gitpython
+      - einops
+      - pillow
+      - tqdm
+      - pandas
+      - wandb
+      - flax==0.3.4
+      - jax==0.2.21
+      - ray==2.0.0
+      - crcmod
+      - google-api-python-client
+      - cryptography
+      - git+https://github.com/JannerM/doodad.git@janner
+      - gdown
+      - scikit-image==0.18.3
+      - scikit-video==1.1.11

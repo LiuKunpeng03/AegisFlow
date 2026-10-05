@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SafeFlowMatcher: Safe and Fast Planning using Flow Matching with Control Barrier Functions</title>
+  <link rel="stylesheet" href="static/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <!-- MathJax for equations -->
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body>
+
+<!-- Title -->
+<section class="hero">
+  <div class="container">
+    <h1 class="title">SafeFlowMatcher</h1>
+    <h2 class="subtitle">Safe and Fast Planning using Flow Matching with Control Barrier Functions</h2>
+    <p class="venue">ICLR 2026</p>
+
+    <div class="authors">
+      <span class="author">
+        <a href="https://takahashi-seiryu.github.io">Jeongyong Yang</a><sup>*</sup>
+      </span>
+      <span class="author">
+        <a href="https://jang-seunghwan.github.io">Seunghwan Jang</a><sup>*&dagger;</sup>
+      </span>
+      <span class="author">
+        <a href="https://soojean.github.io">SooJean Han</a>
+      </span>
+    </div>
+
+    <div class="affiliations">
+      <span>Korea Advanced Institute of Science and Technology (KAIST)</span>
+    </div>
+
+    <div class="author-note">
+      <sup>*</sup>Equal contribution &nbsp; <sup>&dagger;</sup>Corresponding author
+    </div>
+
+    <div class="buttons">
+      <a class="btn" href="https://openreview.net/forum?id=refcXHU1Nh">
+        <i class="ai ai-arxiv"></i> Paper
+      </a>
+      <a class="btn" href="https://github.com/takahashi-seiryu/SafeFlowMatcher">
+        <i class="fab fa-github"></i> Code
+      </a>
+      <a class="btn" href="https://iclr.cc/virtual/2026/poster/10007129">
+        <i class="fas fa-video"></i> ICLR Virtual
+      </a>
+      <!-- [PLACEHOLDER] Add poster PDF link when available -->
+      <!-- <a class="btn" href="static/SafeFlowMatcher_poster.pdf">
+        <i class="fas fa-image"></i> Poster
+      </a> -->
+    </div>
+  </div>
+</section>
+
+<!-- Summary -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Summary</h2>
+    <div style="margin:0 auto 32px;">
+      <div style="text-align:center;">
+        <img src="static/images/problem_definition.png" alt="SafeFlowMatcher overview" style="max-width:70%; border-radius:8px;">
+      </div>
+      <p class="caption caption-left">
+        <b>Overview of SafeFlowMatcher versus existing certification-based methods.</b>
+        Directly constraining intermediate samples during generation (top) can cause paths to be distorted or trapped,
+        whereas SafeFlowMatcher (bottom) decouples generation and certification via a prediction&ndash;correction integrator,
+        producing a complete and certified-safe path.
+      </p>
+    </div>
+    <div class="abstract caption-left">
+      <p>
+        <strong>Problem.</strong> Flow matching (FM) planners generate high-quality paths in very few ODE steps, but provide no formal safety guarantees and can produce incomplete paths near constraints.
+      </p>
+      <p>
+        <strong>Method.</strong> <em>SafeFlowMatcher</em> couples FM with control barrier functions (CBFs) via a two-phase <em>prediction&ndash;correction</em> integrator:
+        <br>(i) <em>Predict</em> &mdash; run the learned FM one or a few steps to get a candidate path;
+        <br>(ii) <em>Correct</em> &mdash; refine the path using a vanishing time-scaled vector field and a CBF quadratic program that applies the minimum perturbation needed to restore safety.
+      </p>
+      <p>
+        <strong>Key insight.</strong> Safety is enforced only on the <em>executed</em> path, not on every intermediate latent sample &mdash; eliminating distributional drift and local trap problems that affect prior methods.
+      </p>
+      <p>
+        <strong>Results.</strong> SafeFlowMatcher produces faster, smoother, and safer paths than diffusion- and FM-based baselines across maze navigation, locomotion, and robot manipulation tasks. We also prove a barrier certificate guaranteeing forward invariance of a robust safe set and finite-time convergence to safety.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Problem -->
+<section class="section alt-bg">
+  <div class="container">
+    <h2 class="section-title">Problem</h2>
+    <div class="abstract caption-left" style="margin-bottom:28px;">
+      <p>
+        Existing generative planners either ignore safety constraints entirely, producing paths that violate them, or enforce safety on every intermediate sample during generation, causing local traps—paths to get stuck near constraints.
+      </p>
+    </div>
+    <div id="maze-player" class="maze-grid" style="position:relative; cursor:pointer;">
+      <div id="maze-play-overlay" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:2; pointer-events:none;">
+        <div style="width:64px; height:64px; background:rgba(0,0,0,0.55); border-radius:50%; display:flex; align-items:center; justify-content:center;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><polygon points="6,3 20,12 6,21"/></svg>
+        </div>
+      </div>
+      <div style="text-align:center;">
+        <video id="maze-vid-1" muted playsinline preload="auto" style="width:100%; border-radius:8px;">
+          <source src="static/videos/maze_diffuser.mp4" type="video/mp4">
+        </video>
+        <p class="caption">Diffuser</p>
+      </div>
+      <div style="text-align:center;">
+        <video id="maze-vid-2" muted playsinline preload="auto" style="width:100%; border-radius:8px;">
+          <source src="static/videos/maze_cg.mp4" type="video/mp4">
+        </video>
+        <p class="caption">Diffuser w/ CFG</p>
+      </div>
+      <div style="text-align:center;">
+        <video id="maze-vid-3" muted playsinline preload="auto" style="width:100%; border-radius:8px;">
+          <source src="static/videos/maze_safediffuser.mp4" type="video/mp4">
+        </video>
+        <p class="caption">SafeDiffuser</p>
+      </div>
+      <div style="text-align:center;">
+        <video id="maze-vid-4" muted playsinline preload="auto" style="width:100%; border-radius:8px;">
+          <source src="static/videos/maze.mp4" type="video/mp4">
+        </video>
+        <p class="caption"><b>SafeFlowMatcher (Ours)</b></p>
+      </div>
+    </div>
+    <p class="caption caption-left" style="margin-top:16px;">
+      <b>Maze2D Navigation.</b> Diffuser produces unsafe paths; Diffuser w/ CFG and SafeDiffuser get trapped or yield incomplete paths near constraints; SafeFlowMatcher generates complete, certified-safe paths.
+    </p>
+  </div>
+</section>
+
+<!-- Method -->
+<section class="section alt-bg">
+  <div class="container">
+    <h2 class="section-title">Method</h2>
+    <div class="abstract caption-left" style="margin-bottom:32px;">
+      <p>
+        SafeFlowMatcher decouples <em>generation</em> from <em>safety certification</em> via a two-phase <em>Prediction&ndash;Correction</em> (PC) integrator. The prediction phase runs the learned FM dynamics freely to produce a candidate path; the correction phase then applies a vanishing time-scaled vector field with a CBF-QP that minimally adjusts velocities to enforce safety.
+      </p>
+    </div>
+
+    <!-- Pipeline with phase labels -->
+    <div class="method-pipeline" style="max-width:960px; margin:0 auto 24px;">
+      <!-- Phase 1: Predict -->
+      <div class="method-phase method-phase1">
+        <div style="background:#dbeafe; border-radius:6px; text-align:center; padding:4px 0; font-size:0.85rem; font-weight:600; color:#1d4ed8; margin-bottom:6px;">
+          Phase 1 &mdash; <em>Predict</em>
+        </div>
+        <div class="method-phase-items">
+          <div style="text-align:center;">
+            <img src="static/images/noise.png" alt="Noise path" style="width:100%; border-radius:8px;">
+            <p class="caption" style="margin-top:8px;">Noise Path<br><small>$\tau_0^p \sim \mathcal{N}(0,I)$</small></p>
+          </div>
+          <div style="text-align:center; font-size:1.6rem; color:#555;">&rarr;</div>
+          <div style="text-align:center;">
+            <img src="static/images/candidate.png" alt="Candidate path" style="width:100%; border-radius:8px;">
+            <p class="caption" style="margin-top:8px;">Candidate Path<br><small>$\tau_1^p = \Psi_{0\to1}^{(T^p)}(\tau_0^p)$</small></p>
+          </div>
+        </div>
+        <div style="background:#f8f8f8; border-radius:10px; padding:20px 24px; margin-top:12px;">
+          <h3 style="margin:0 0 8px; font-size:1rem;">Phase 1 &mdash; <em>Predict</em></h3>
+          <p style="margin:0; font-size:0.93rem; line-height:1.6;">
+            Integrate the nominal FM vector field $v_t(\tau_t;\theta)$ from noise for $T^p = 1$ step (or a few). This yields a candidate path $\tau_1^p$ close to the target distribution.
+          </p>
+        </div>
+      </div>
+
+      <!-- Arrow between phases -->
+      <div class="method-phase-arrow" style="text-align:center; font-size:1.6rem; color:#555;">&rarr;</div>
+
+      <!-- Phase 2: Correct -->
+      <div class="method-phase method-phase2">
+        <div style="background:#dcfce7; border-radius:6px; text-align:center; padding:4px 0; font-size:0.85rem; font-weight:600; color:#15803d; margin-bottom:6px;">
+          Phase 2 &mdash; <em>Correct</em>
+        </div>
+        <div class="method-phase-items">
+          <div style="text-align:center;">
+            <video autoplay loop muted playsinline preload="auto" style="width:100%; border-radius:8px;">
+              <source src="static/videos/intermediate.mp4" type="video/mp4">
+            </video>
+            <p class="caption" style="margin-top:8px;">Correcting<br><small>VTFD + CBF-QP</small></p>
+          </div>
+          <div style="text-align:center; font-size:1.6rem; color:#555;">&rarr;</div>
+          <div style="text-align:center;">
+            <img src="static/images/final.png" alt="Final path" style="width:100%; border-radius:8px;">
+            <p class="caption" style="margin-top:8px;">Final Path<br><small>$\tau_1^c \approx \tau_1^\star$</small></p>
+          </div>
+        </div>
+        <div style="background:#f8f8f8; border-radius:10px; padding:20px 24px; margin-top:12px;">
+          <h3 style="margin:0 0 8px; font-size:1rem;">Phase 2 &mdash; <em>Correct</em></h3>
+          <p style="margin:0; font-size:0.93rem; line-height:1.6;">
+            Refine the candidate path using vanishing time-scaled flow dynamics (VTFD), $\alpha(1-t)v_t {+} \Delta u_t$, where $\Delta u_t$ is solved by a CBF-QP that applies the minimum perturbation needed to keep each waypoint in the safe set over $T^c = 256$ steps.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="abstract caption-left" style="margin-top:24px;">
+      <p>
+        <strong>Guarantee.</strong> The correction phase provably maintains forward invariance of a safe set and drives any unsafe waypoints back to safety in finite time without imposing constraints on intermediate latent samples, which avoids distributional drift and local traps.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Main Results -->
+<section class="section alt-bg">
+  <div class="container">
+    <h2 class="section-title">Maze2D Navigation Results</h2>
+    <div class="abstract caption-left" style="margin-bottom:28px;">
+      <p>
+        We evaluate SafeFlowMatcher on the Maze2D navigation benchmark against diffusion- and FM-based baselines. SafeFlowMatcher achieves the highest task score with zero trap rate, while all safety constraints (BS &ge; 0) are satisfied.
+      </p>
+    </div>
+
+    <!-- Quantitative Results Table -->
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>BS1 (&ge;0)</th>
+            <th>BS2 (&ge;0)</th>
+            <th>Score &uarr;</th>
+            <th>Time (ms)</th>
+            <th>Trap Rate &darr;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Diffuser</td>
+            <td style="color:#dc2626;">-0.825</td>
+            <td style="color:#dc2626;">-0.784</td>
+            <td>1.572&pm;0.288</td>
+            <td><b>3.70</b></td>
+            <td>0%</td>
+          </tr>
+          <tr>
+            <td>RES-SafeDiffuser</td>
+            <td>0.010</td>
+            <td>0.010</td>
+            <td>1.442&pm;0.451</td>
+            <td>4.72</td>
+            <td>72%</td>
+          </tr>
+          <tr>
+            <td>TVS-SafeDiffuser</td>
+            <td style="color:#dc2626;">-0.003</td>
+            <td style="color:#dc2626;">-0.003</td>
+            <td>1.506&pm;0.405</td>
+            <td>4.78</td>
+            <td>69%</td>
+          </tr>
+          <tr>
+            <td>TVS-SafeDDIM ($\eta$=1.0)</td>
+            <td style="color:#dc2626;">-0.026</td>
+            <td style="color:#dc2626;">-0.026</td>
+            <td>1.549&pm;0.304</td>
+            <td>4.74</td>
+            <td>65%</td>
+          </tr>
+          <tr>
+            <td>RES-SafeFM</td>
+            <td>0.010</td>
+            <td>0.010</td>
+            <td>1.401&pm;0.429</td>
+            <td>4.74</td>
+            <td>12%</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><b>SafeFlowMatcher (Ours)</b></td>
+            <td><b>0.010</b></td>
+            <td><b>0.010</b></td>
+            <td><b>1.632&pm;0.003</b></td>
+            <td>4.71</td>
+            <td><b>0%</b></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">
+      SafeFlowMatcher achieves the highest score with zero trap rate and guaranteed safety (BS &ge; 0), evaluated over 100 independent trials.
+    </p>
+    <div style="text-align:center; max-width:760px; margin:28px auto 0;">
+      <img src="static/images/gen_process_SDvsSFM.png" alt="Generation process comparison" style="max-width:100%; border-radius:8px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+      <p class="caption caption-left">
+        <b>Comparison of path generation processes.</b>
+        (Top) RES-SafeDiffuser initializes samples all over the maze and converges to a path with local traps.
+        (Bottom) SafeFlowMatcher (ours) initializes from near the target path after the prediction phase,
+        and converges to a higher-quality path with no local traps.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- High-dimensional Robotic Task Results -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">High-dimensional Robotic Task Results</h2>
+    <div class="abstract caption-left" style="margin-bottom:28px;">
+      <p>
+        SafeFlowMatcher generalizes to high-dimensional robotic tasks beyond navigation. On locomotion and manipulation benchmarks, it consistently achieves higher task scores than diffusion- and FM-based baselines while maintaining certified safety.
+      </p>
+    </div>
+    <div class="table-wrapper" style="margin-bottom:32px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Environment</th>
+            <th>Method</th>
+            <th>Score &uarr;</th>
+            <th>BS (&ge;0)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td rowspan="6"><b>Locomotion</b></td>
+            <td rowspan="3">Walker2D</td>
+            <td>SafeDiffuser</td>
+            <td>0.283&pm;0.135</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td>SafeFM</td>
+            <td>0.264&pm;0.127</td>
+            <td>Yes</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><b>SafeFlowMatcher (Ours)</b></td>
+            <td><b>0.331&pm;0.021</b></td>
+            <td><b>Yes</b></td>
+          </tr>
+          <tr>
+            <td rowspan="3">Hopper</td>
+            <td>SafeDiffuser</td>
+            <td>0.435&pm;0.068</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td>SafeFM</td>
+            <td>0.675&pm;0.312</td>
+            <td>Yes</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><b>SafeFlowMatcher (Ours)</b></td>
+            <td><b>0.917&pm;0.026</b></td>
+            <td><b>Yes</b></td>
+          </tr>
+          <tr>
+            <td rowspan="3"><b>Robot Manipulation</b></td>
+            <td rowspan="3">Block Stacking</td>
+            <td>SafeDiffuser</td>
+            <td>0.72&pm;0.055</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td>SafeFM</td>
+            <td>0.73&pm;0.056</td>
+            <td>Yes</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><b>SafeFlowMatcher (Ours)</b></td>
+            <td><b>0.76&pm;0.053</b></td>
+            <td><b>Yes</b></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">
+      <b>Performance on high-dimensional robotic tasks.</b> SafeFlowMatcher maintains its advantages in both locomotion and robot manipulation settings.
+    </p>
+    <div style="display:flex; flex-direction:column; gap:32px; max-width:560px; margin:32px auto 0;">
+      <div style="text-align:center;">
+        <video autoplay loop muted playsinline style="width:100%; border-radius:8px;">
+          <source src="static/videos/loco.mp4" type="video/mp4">
+        </video>
+        <p class="caption" style="margin-top:0;">Locomotion (Hopper)</p>
+      </div>
+      <div style="text-align:center;">
+        <video autoplay loop muted playsinline style="width:100%; border-radius:8px;">
+          <source src="static/videos/kuka.mp4" type="video/mp4">
+        </video>
+        <p class="caption">Kuka Manipulation</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- Video (for ICLR virtual presentation) -->
+<!-- [PLACEHOLDER] Uncomment and add YouTube video ID after recording presentation -->
+<!--
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Presentation Video</h2>
+    <div class="video-wrapper">
+      <iframe src="https://www.youtube.com/embed/YOUR_VIDEO_ID"
+              title="SafeFlowMatcher - ICLR 2026"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen>
+      </iframe>
+    </div>
+  </div>
+</section>
+-->
+
+<!-- BibTeX -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">BibTeX</h2>
+    <div class="bibtex-wrapper">
+      <button class="copy-btn" onclick="copyBibtex()">
+        <i class="fas fa-copy"></i> Copy
+      </button>
+      <pre><code id="bibtex">@inproceedings{
+yang2026safeflowmatcher,
+title={SafeFlowMatcher: Safe and Fast Planning using Flow Matching with Control Barrier Functions},
+author={Jeongyong Yang and Seunghwan Jang and SooJean Han},
+booktitle={The Fourteenth International Conference on Learning Representations},
+year={2026},
+url={https://openreview.net/forum?id=refcXHU1Nh}
+}</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- Acknowledgements -->
+<section class="section alt-bg">
+  <div class="container">
+    <h2 class="section-title">Acknowledgements</h2>
+    <div class="abstract">
+      <p>
+        The diffusion model implementation is based on
+        <a href="https://github.com/jannerm/diffuser">Diffuser</a> by Michael Janner.
+        The safe diffusion implementation is based on
+        <a href="https://github.com/Weixy21/SafeDiffuser">SafeDiffuser</a> by Wei Xiao.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <p>
+      This page template is inspired by
+      <a href="https://nerfies.github.io/" target="_blank">Nerfies</a>.
+    </p>
+  </div>
+</footer>
+
+<script>
+// Maze comparison: click to play once, synchronized
+(function() {
+  const ids = ['maze-vid-1', 'maze-vid-2', 'maze-vid-3', 'maze-vid-4'];
+  const videos = ids.map(id => document.getElementById(id));
+  const player = document.getElementById('maze-player');
+  const overlay = document.getElementById('maze-play-overlay');
+  let playing = false;
+
+  // Preload and seek to last frame for preview
+  videos.forEach(v => {
+    v.load();
+    v.addEventListener('loadedmetadata', () => { v.currentTime = v.duration; }, { once: true });
+  });
+
+  player.addEventListener('click', function() {
+    if (playing) return;
+    playing = true;
+    overlay.style.display = 'none';
+
+    // Wait until all are ready, then play together
+    Promise.all(videos.map(v => new Promise(resolve => {
+      if (v.readyState >= 3) return resolve();
+      v.addEventListener('canplaythrough', resolve, { once: true });
+    }))).then(() => {
+      videos.forEach(v => { v.currentTime = 0; v.play(); });
+    });
+
+    // When the longest video ends, show the overlay again
+    const onEnded = () => {
+      if (videos.every(v => v.ended || v.paused)) {
+        playing = false;
+        overlay.style.display = 'flex';
+      }
+    };
+    videos.forEach(v => v.addEventListener('ended', onEnded));
+  });
+})();
+
+function copyBibtex() {
+  const text = document.getElementById('bibtex').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+    setTimeout(() => {
+      btn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+    }, 2000);
+  });
+}
+</script>
+
+</body>
+</html>
